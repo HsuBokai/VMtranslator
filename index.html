@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Nand2tetris VMtranslator</title>
+<style type="text/css">
+#inText{
+	background-color:black;
+	color:white;
+	font-size:20px;
+	font-family: "Lucida Console", Monaco, monospace;
+	width:40%;
+	height:500px;
+}
+#outText{
+	background-color:black;
+	color:white;
+	font-size:20px;
+	font-family: "Lucida Console", Monaco, monospace;
+	width:40%;
+	height:500px;
+}
+</style>
+</head>
+
+<body>
+<textarea id="inText"></textarea>
+<textarea id="outText"></textarea>
+
+<script type="text/javascript">
+/*
+add
+sub
+neg
+eq
+gt
+lt
+and
+or
+not
+*/
+
+/*
+push 	constant	345
+push	local		4
+pop	local		4
+push	argument	5
+pop 	argument	5
+push	static		0,1,...,239	// from 16 to 255
+pop	static 		0,1,...,239
+push	temp		0,1,2,3,4,5,6,7	// from 5 to 12
+pop	temp		0,1,2,3,4,5,6,7
+push	pointer		0,1
+pop 	pointer		0,1
+*/
+
+/*
+label	LOOP
+goto	LOOP
+if-goto	LOOP
+*/
+
+/*
+function	Sys.main	3
+call		Sys.main	2
+return
+*/
+
+function isSpace(c){ return c==" " || c=="\t" || c=="\n"; }
+
+var Output = {
+	createNew: function(){
+		var output = {};
+		var commandNum;
+		var outText;
+		output.pushCommand = function(command){
+			outText += command;
+			outText += "\n";
+			commandNum++;
+		}
+		output.getOutText = function(){ return outText; }
+		output.getCommandNum = function(){ return commandNum; }
+		output.reset = function(){ outText = ""; commandNum = 0; }
+		output.reset();
+		return output;
+	}
+}
+
+var Stream = {
+	createNew: function(arr, len){
+		var stream = {};
+		var current;
+		stream.isEnd = function(){ return current >= len || current < 0; }
+		stream.next = function(){ return arr.charAt(current++); }
+		stream.nextWord = function(){
+			while(current < len && isSpace(arr[current])) current++;
+			var ret = "";
+			if(current >= len) return ret;
+			while(current < len && !isSpace(arr[current])) ret += arr[current++];
+			return ret;
+		}
+		stream.reset = function(){ current=0; }
+		stream.reset();
+		return stream;
+	}
+}
+
+var FSM = {
+	createNew: function(stream, output){
+		var fsm = {};
+		var memory_segment;
+		var memory_action;
+		var state;
+		var isEnd;
+		var init_ = function(input){
+			switch(input){
+				case "add":
+					output.pushCommand("@SP\nAM=M-1\nD=M\nA=A-1\nM=M+D");
+					break;
+				case "sub":
+					output.pushCommand("@SP\nAM=M-1\nD=M\nA=A-1\nM=M-D");
+					break;
+				case "neg":
+				case "eq":
+				case "gt":
+				case "lt":
+				case "and":
+				case "or":
+				case "not":
+					break;
+				case "push":
+				case "pop":
+					memory_action = input;
+					state = segment_ ; 
+					break;
+				default: 
+			}
+		}
+		var segment_ = function(input){
+			switch(input){
+				case "constant": 
+				case "local":
+				case "argument":
+				case "static":
+				case "temp":
+				case "pointer": 
+					memory_segment = input;
+					state = offset_ ; 
+					break;
+				default:
+			}
+		}
+		var push_segment = function(num_str){
+			switch(memory_segment){
+				case "constant":
+					output.pushCommand("@" + num_str + "\nD=A");
+					break;
+				case "local":
+					output.pushCommand("@" + num_str + "\nD=A\n@LCL\nA=M+D\nD=M");
+					break;
+				case "argument":
+				case "static":
+				case "temp":
+				case "pointer": 
+			}
+		}
+		var pop_segment = function(num_str){
+			switch(memory_segment){
+				case "local":
+					output.pushCommand("@" + num_str + "\nD=A\n@LCL\nD=M+D\n@R15\nM=D");
+					break;
+				case "argument":
+				case "static":
+				case "temp":
+				case "pointer": 
+			}
+		}
+		var offset_ = function(input){
+			var num = parseInt(input,10);
+			if( isNaN(num) ) console.log("memory offset is not a number!\n");
+			switch(memory_action){
+				case "push":
+					push_segment(input);
+					output.pushCommand("@SP\nM=M+1\nA=M-1\nM=D");
+					break;
+				case "pop":
+					pop_segment(input);
+					output.pushCommand("@SP\nAM=M-1\nD=M\n@R15\nA=M\nM=D");
+					break;
+			}
+			fsm.reset_data();
+			state = init_ ;
+		}
+		fsm.run = function(){
+			stream.reset();
+			output.reset();
+			fsm.reset();
+			while(isEnd==false){
+				if(stream.isEnd()) isEnd = true;
+				else {
+					var input = stream.nextWord();
+					if(input!="") state(input);
+				}
+			}
+		}
+		fsm.reset_data = function(){
+			memory_action = "";
+			memory_segment = "";
+		}
+		fsm.reset = function(){
+			state = init_;
+			isEnd = false;
+			fsm.reset_data();
+		}
+		fsm.reset();
+		return fsm;
+	}
+}
+
+var inTextArea = document.getElementById("inText");
+function nand2tetris(){
+	var inText = inTextArea.value;
+	var stream = Stream.createNew(inText, inText.length);
+	var output = Output.createNew();
+	var fsm = FSM.createNew(stream, output);
+	fsm.run();
+	document.getElementById("outText").value = output.getOutText();
+}
+inTextArea.oninput = nand2tetris;
+/*
+var outText = "";
+function rand01(){
+	var inText = inTextArea.value;
+	var len = inText.length;
+	if(inText[len-1]=="\n") outText += "\n";
+	else outText += (Math.random()<0.5)?"0":"1";
+	document.getElementById("outText").value = outText;
+}
+inTextArea.oninput = rand01;
+*/
+</script>
+</body>
+</html>
