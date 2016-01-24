@@ -145,12 +145,26 @@ var FSM = {
 					output.pushCommand("@SP\nAM=M-1\nD=M\nA=A-1\nM=M-D");
 					break;
 				case "neg":
+					output.pushCommand("@SP\nA=M-1\nM=-M");
+					break;
 				case "eq":
 				case "gt":
 				case "lt":
+					var ifelse_address = issuer.issue();
+					var jump_command = "";
+					if(input=="eq") jump_command = "\nD;JEQ\nM=0\n(";
+					else if(input=="gt") jump_command = "\nD;JGT\nM=0\n(";
+					else jump_command = "\nD;JLT\nM=0\n(";
+					output.pushCommand("@SP\nAM=M-1\nD=M\nA=A-1\nD=M-D\nM=-1\n@" + ifelse_address + jump_command + ifelse_address + ")");
+					break;
 				case "and":
+					output.pushCommand("@SP\nAM=M-1\nD=M\nA=A-1\nM=M&D");
+					break;
 				case "or":
+					output.pushCommand("@SP\nAM=M-1\nD=M\nA=A-1\nM=M|D");
+					break;
 				case "not":
+					output.pushCommand("@SP\nA=M-1\nM=!M");
 					break;
 				case "push":
 				case "pop":
@@ -188,6 +202,8 @@ var FSM = {
 					state = call_;
 					break;
 				default: 
+					console.log("unknown key words!\n");
+					isEnd = true;
 			}
 		}
 		var segment_ = function(input){
@@ -213,9 +229,26 @@ var FSM = {
 					output.pushCommand("@" + num_str + "\nD=A\n@LCL\nA=M+D\nD=M");
 					break;
 				case "argument":
+					output.pushCommand("@" + num_str + "\nD=A\n@ARG\nA=M+D\nD=M");
+					break;
 				case "static":
+					output.pushCommand("@" + num_str + "\nD=A\n@16\nA=A+D\nD=M");
+					break;
 				case "temp":
+					output.pushCommand("@" + num_str + "\nD=A\n@5\nA=A+D\nD=M");
+					break;
 				case "pointer": 
+					if(num_str=="0") output.pushCommand("@THIS\nD=M");
+					else if(num_str=="1") output.pushCommand("@THAT\nD=M");
+					else {
+						console.log("push pointer memory offset out of range!\n");
+						isEnd = true;
+						return;
+					}
+					break;
+				default:
+					console.log("pop memory segment is illegal!\n");
+					isEnd = true;
 			}
 		}
 		var pop_segment = function(num_str){
@@ -224,9 +257,26 @@ var FSM = {
 					output.pushCommand("@" + num_str + "\nD=A\n@LCL\nD=M+D\n@R15\nM=D");
 					break;
 				case "argument":
+					output.pushCommand("@" + num_str + "\nD=A\n@ARG\nD=M+D\n@R15\nM=D");
+					break;
 				case "static":
+					output.pushCommand("@" + num_str + "\nD=A\n@16\nD=A+D\n@R15\nM=D");
+					break;
 				case "temp":
+					output.pushCommand("@" + num_str + "\nD=A\n@5\nD=A+D\n@R15\nM=D");
+					break;
 				case "pointer": 
+					if(num_str=="0") output.pushCommand("@THIS\nD=A\n@15\nM=D");
+					else if(num_str=="1") output.pushCommand("@THAT\nD=A\n@15\nM=D");
+					else {
+						console.log("pop pointer memory offset out of range!\n");
+						isEnd = true;
+						return;
+					}
+					break;
+				default:
+					console.log("pop memory segment is illegal!\n");
+					isEnd = true;
 			}
 		}
 		var offset_ = function(input){
