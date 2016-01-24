@@ -38,7 +38,6 @@ and
 or
 not
 */
-
 /*
 push 	constant	345
 push	local		4
@@ -52,21 +51,17 @@ pop	temp		0,1,2,3,4,5,6,7
 push	pointer		0,1
 pop 	pointer		0,1
 */
-
 /*
 label	LOOP
 goto	LOOP
 if-goto	LOOP
 */
-
 /*
 function	Sys.main	3
 call		Sys.main	2
 return
 */
-
 function isSpace(c){ return c==" " || c=="\t" || c=="\n"; }
-
 var Output = {
 	createNew: function(){
 		var output = {};
@@ -84,7 +79,6 @@ var Output = {
 		return output;
 	}
 }
-
 var Stream = {
 	createNew: function(arr, len){
 		var stream = {};
@@ -103,7 +97,6 @@ var Stream = {
 		return stream;
 	}
 }
-
 var IdIssuer = {
 	createNew: function(){
 		var issuer = {};
@@ -126,7 +119,6 @@ var IdIssuer = {
 		return issuer;
 	}
 }
-
 var FSM = {
 	createNew: function(stream, output, issuer){
 		var fsm = {};
@@ -152,9 +144,9 @@ var FSM = {
 				case "lt":
 					var ifelse_address = issuer.issue();
 					var jump_command = "";
-					if(input=="eq") jump_command = "\nD;JEQ\nM=0\n(";
-					else if(input=="gt") jump_command = "\nD;JGT\nM=0\n(";
-					else jump_command = "\nD;JLT\nM=0\n(";
+					if(input=="eq") jump_command = "\nD;JEQ\n@SP\nA=M-1\nM=0\n(";
+					else if(input=="gt") jump_command = "\nD;JGT\n@SP\nA=M-1\nM=0\n(";
+					else jump_command = "\nD;JLT\n@SP\nA=M-1\nM=0\n(";
 					output.pushCommand("@SP\nAM=M-1\nD=M\nA=A-1\nD=M-D\nM=-1\n@" + ifelse_address + jump_command + ifelse_address + ")");
 					break;
 				case "and":
@@ -210,6 +202,8 @@ var FSM = {
 			switch(input){
 				case "constant": 
 				case "local":
+				case "this":
+				case "that":
 				case "argument":
 				case "static":
 				case "temp":
@@ -230,6 +224,12 @@ var FSM = {
 					break;
 				case "argument":
 					output.pushCommand("@" + num_str + "\nD=A\n@ARG\nA=M+D\nD=M");
+					break;
+				case "this":
+					output.pushCommand("@" + num_str + "\nD=A\n@THIS\nA=M+D\nD=M");
+					break;
+				case "that":
+					output.pushCommand("@" + num_str + "\nD=A\n@THAT\nA=M+D\nD=M");
 					break;
 				case "static":
 					output.pushCommand("@" + num_str + "\nD=A\n@16\nA=A+D\nD=M");
@@ -258,6 +258,12 @@ var FSM = {
 					break;
 				case "argument":
 					output.pushCommand("@" + num_str + "\nD=A\n@ARG\nD=M+D\n@R15\nM=D");
+					break;
+				case "this":
+					output.pushCommand("@" + num_str + "\nD=A\n@THIS\nD=M+D\n@R15\nM=D");
+					break;
+				case "that":
+					output.pushCommand("@" + num_str + "\nD=A\n@THAT\nD=M+D\n@R15\nM=D");
 					break;
 				case "static":
 					output.pushCommand("@" + num_str + "\nD=A\n@16\nD=A+D\n@R15\nM=D");
@@ -389,7 +395,6 @@ var FSM = {
 		return fsm;
 	}
 }
-
 var inTextArea = document.getElementById("inText");
 function nand2tetris(){
 	var inText = inTextArea.value;
