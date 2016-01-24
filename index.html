@@ -104,13 +104,38 @@ var Stream = {
 	}
 }
 
+var IdIssuer = {
+	createNew: function(){
+		var issuer = {};
+		var id;
+		var alphabet = ['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'];
+		issuer.issue = function(){
+			var ret = "";
+			var num = id;
+			var len = 10;
+			while(len--){
+				var r = num%26;
+				ret += alphabet[r];
+				num = (num - r)/26;
+			}
+			id++;
+			return ret;
+		}
+		issuer.reset = function(){ id = 0; }
+		issuer.reset();
+		return issuer;
+	}
+}
+
 var FSM = {
-	createNew: function(stream, output){
+	createNew: function(stream, output, issuer){
 		var fsm = {};
-		var memory_segment;
-		var memory_action;
 		var state;
 		var isEnd;
+		var memory_action;
+		var memory_segment;
+		var flow_action;
+		var call_function;
 		var init_ = function(input){
 			switch(input){
 				case "add":
@@ -131,6 +156,36 @@ var FSM = {
 				case "pop":
 					memory_action = input;
 					state = segment_ ; 
+					break;
+				case "label":
+				case "goto":
+				case "if-goto":
+					flow_action = input;
+					state = flow_ ;
+					break;
+				case "return":
+					////save return address
+					output.pushCommand("@5\nD=A\n@LCL\nA=M-D\nD=M\n@R14\nM=D");
+					////set return value
+					output.pushCommand("@SP\nAM=M-1\nD=M\n@ARG\nA=M\nM=D");
+					////set SP
+					output.pushCommand("D=A+1\n@SP\nM=D");
+					////copy THAT
+					output.pushCommand("@LCL\nA=M-1\nD=M\n@THAT\nM=D");
+					////copy THIS
+					output.pushCommand("@2\nD=A\n@LCL\nA=M-D\nD=M\n@THIS\nM=D");
+					////copy ARG
+					output.pushCommand("@3\nD=A\n@LCL\nA=M-D\nD=M\n@ARG\nM=D");
+					////copy CLC
+					output.pushCommand("@4\nD=A\n@LCL\nA=M-D\nD=M\n@LCL\nM=D");
+					//// goto return address
+					output.pushCommand("@R14\nA=M\n0;JMP");
+					break;
+				case "function":
+					state = function_;
+					break;
+				case "call":
+					state = call_;
 					break;
 				default: 
 			}
@@ -176,7 +231,11 @@ var FSM = {
 		}
 		var offset_ = function(input){
 			var num = parseInt(input,10);
-			if( isNaN(num) ) console.log("memory offset is not a number!\n");
+			if( isNaN(num) ) {
+				console.log("memory offset is not a number!\n");
+				isEnd = true;
+				return;
+			}
 			switch(memory_action){
 				case "push":
 					push_segment(input);
@@ -189,6 +248,69 @@ var FSM = {
 			}
 			fsm.reset_data();
 			state = init_ ;
+		}
+		var flow_ = function(input){
+			switch(flow_action){
+				case "label":
+					output.pushCommand("(" + input + ")");
+					break;
+				case "goto":
+					output.pushCommand("@" + input + "\n0;JMP");
+					break;
+				case "if-goto":
+					output.pushCommand("@SP\nAM=M-1\nD=M\n@" + input + "\nD;JNE");
+					break;
+			}
+			fsm.reset_data();
+			state = init_;
+		}
+		var function_ = function(input){
+			output.pushCommand("(" + input + ")");
+			state = function_nVar_;
+		}
+		var function_nVar_ = function(input){
+			var num = parseInt(input);
+			if( isNaN(num) ) {
+				console.log("function nVar is not a number!\n");
+				isEnd = true;
+				return;
+			}
+			while(num--){
+				output.pushCommand("@SP\nM=M+1\nA=M-1\nM=0");
+			}
+			state = init_;
+		}
+		var call_ = function(input){
+			call_function = input;
+			state = call_nArg_;
+		}
+		var call_nArg_ = function(input){
+			var num = parseInt(input);
+			if( isNaN(num) ) {
+				console.log("function call nArg is not a number!\n");
+				isEnd = true;
+				return;
+			}
+			var retAddress = issuer.issue();
+			var num = num + 5;
+			////push return Address
+			output.pushCommand("@" + retAddress + "\nD=A\n@SP\nM=M+1\nA=M-1\nM=D");
+			////push LCL
+			output.pushCommand("@LCL\nD=M\n@SP\nM=M+1\nA=M-1\nM=D");
+			////push ARG
+			output.pushCommand("@ARG\nD=M\n@SP\nM=M+1\nA=M-1\nM=D");
+			////push THIS
+			output.pushCommand("@THIS\nD=M\n@SP\nM=M+1\nA=M-1\nM=D");
+			////push THAT
+			output.pushCommand("@THAT\nD=M\n@SP\nM=M+1\nA=M-1\nM=D");
+			////set ARG
+			output.pushCommand("@" + num.toString(10) + "\nD=A\n@SP\nD=M-D\n@ARG\nM=D");
+			////set LCL
+			output.pushCommand("@SP\nD=M\n@LCL\nM=D");
+			//// goto
+			output.pushCommand("@" + call_function + "\n0;JMP\n(" + retAddress + ")");
+			fsm.reset_data();
+			state = init_;
 		}
 		fsm.run = function(){
 			stream.reset();
@@ -205,6 +327,8 @@ var FSM = {
 		fsm.reset_data = function(){
 			memory_action = "";
 			memory_segment = "";
+			flow_action = "";
+			call_function = "";
 		}
 		fsm.reset = function(){
 			state = init_;
@@ -221,22 +345,12 @@ function nand2tetris(){
 	var inText = inTextArea.value;
 	var stream = Stream.createNew(inText, inText.length);
 	var output = Output.createNew();
-	var fsm = FSM.createNew(stream, output);
+	var issuer = IdIssuer.createNew();
+	var fsm = FSM.createNew(stream, output, issuer);
 	fsm.run();
 	document.getElementById("outText").value = output.getOutText();
 }
 inTextArea.oninput = nand2tetris;
-/*
-var outText = "";
-function rand01(){
-	var inText = inTextArea.value;
-	var len = inText.length;
-	if(inText[len-1]=="\n") outText += "\n";
-	else outText += (Math.random()<0.5)?"0":"1";
-	document.getElementById("outText").value = outText;
-}
-inTextArea.oninput = rand01;
-*/
 </script>
 </body>
 </html>
